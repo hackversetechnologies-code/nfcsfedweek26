@@ -48,21 +48,27 @@ export async function POST(req: Request) {
   const { data: reg } = await supabase.from("registrations").select("full_name, email").eq("id", regId).single();
   const { data: team } = teamId ? await supabase.from("teams").select("name").eq("id", teamId).single() : { data: null };
 
-  let emailResult = { ok: false as boolean };
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://nfcsfedweek26.vercel.app";
+
+  let emailResult: Record<string, any> = { ok: false };
   if (reg) {
     emailResult = await sendApprovalEmail({
       to: reg.email,
       fullName: reg.full_name,
       teamName: team?.name ?? "Team Member",
       registrationId: regId,
-      ticketUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/ticket/${regId}`
+      ticketUrl: `${siteUrl}/ticket/${regId}`
     });
+    console.log(`Email dispatch result for ${reg.email}:`, emailResult);
   }
 
   return NextResponse.json({
     ok: true,
     ticket_code: ticket?.ticket_code,
     team: team?.name ?? null,
-    email_sent: emailResult.ok
+    email_sent: emailResult.ok,
+    email_fallback: (emailResult as any).fallback ?? false,
+    email_recipient: (emailResult as any).recipient ?? null,
+    email_reason: (emailResult as any).reason ?? null,
   });
 }
