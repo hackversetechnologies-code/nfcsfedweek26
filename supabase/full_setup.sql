@@ -1,6 +1,6 @@
 -- ========================================================
--- NFCS Federation Week 2026 — Complete Database Setup
--- Copy and run this ENTIRE file in the Supabase SQL Editor:
+-- NFCS Federation Week 2026 — Complete Idempotent Setup
+-- Copy and run this ENTIRE file in your Supabase SQL Editor:
 -- https://supabase.com/dashboard/project/_/sql/new
 -- ========================================================
 
@@ -26,10 +26,10 @@ create table if not exists event_settings (
 
 insert into event_settings (id) values (1) on conflict (id) do nothing;
 
--- 2. TEAMS TABLE (with UNIQUE name constraint)
+-- 2. TEAMS TABLE
 create table if not exists teams (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
+  name text not null,
   colour text not null,
   hex text not null,
   active boolean not null default true,
@@ -37,21 +37,13 @@ create table if not exists teams (
   created_at timestamptz not null default now()
 );
 
--- Delete duplicate teams if re-running on existing database
-delete from teams
-where id not in (
-  select distinct on (name) id
-  from teams
-  order by name, created_at asc
-);
-
--- Seed default 4 picnic teams
+-- Seed default 4 picnic teams if teams table is empty
 insert into teams (name, colour, hex, "order") values
   ('Team Green', 'green', '#3E6B4F', 1),
   ('Team Blue',  'blue',  '#2E4E7E', 2),
   ('Team Black', 'black', '#1A1A1A', 3),
   ('Team Red',   'red',   '#8C3A32', 4)
-on conflict (name) do nothing;
+on conflict do nothing;
 
 -- 3. REGISTRATIONS TABLE
 create table if not exists registrations (
@@ -65,6 +57,36 @@ create table if not exists registrations (
   team_id uuid references teams(id),
   created_at timestamptz not null default now()
 );
+
+-- IDEMPOTENT TEAM DEDUPLICATION & RE-LINKING:
+-- Re-link any registrations pointing to duplicate team IDs to the canonical team ID
+update registrations r
+set team_id = canon.canonical_id
+from (
+  select distinct on (name) name, id as canonical_id
+  from teams
+  order by name, created_at asc
+) canon
+join teams t on t.name = canon.name
+where r.team_id = t.id and r.team_id <> canon.canonical_id;
+
+-- Delete unreferenced duplicate team rows
+delete from teams
+where id not in (
+  select distinct on (name) id
+  from teams
+  order by name, created_at asc
+);
+
+-- Add unique constraint on teams(name) if not already present
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'teams_name_unique'
+  ) then
+    alter table teams add constraint teams_name_unique unique (name);
+  end if;
+end $$;
 
 -- 4. PAYMENTS TABLE
 create table if not exists payments (
