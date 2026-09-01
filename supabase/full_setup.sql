@@ -26,15 +26,23 @@ create table if not exists event_settings (
 
 insert into event_settings (id) values (1) on conflict (id) do nothing;
 
--- 2. TEAMS TABLE
+-- 2. TEAMS TABLE (with UNIQUE name constraint)
 create table if not exists teams (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
+  name text not null unique,
   colour text not null,
   hex text not null,
   active boolean not null default true,
   "order" int not null default 0,
   created_at timestamptz not null default now()
+);
+
+-- Delete duplicate teams if re-running on existing database
+delete from teams
+where id not in (
+  select distinct on (name) id
+  from teams
+  order by name, created_at asc
 );
 
 -- Seed default 4 picnic teams
@@ -43,7 +51,7 @@ insert into teams (name, colour, hex, "order") values
   ('Team Blue',  'blue',  '#2E4E7E', 2),
   ('Team Black', 'black', '#1A1A1A', 3),
   ('Team Red',   'red',   '#8C3A32', 4)
-on conflict do nothing;
+on conflict (name) do nothing;
 
 -- 3. REGISTRATIONS TABLE
 create table if not exists registrations (

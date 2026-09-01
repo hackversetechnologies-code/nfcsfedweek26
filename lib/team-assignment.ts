@@ -2,22 +2,30 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 /**
  * Balanced random team assignment.
- * 1. Get active teams.
+ * 1. Get active teams (deduplicated by name).
  * 2. Count approved members per team.
  * 3. Find the team(s) with the lowest count.
  * 4. Randomly pick among the lowest-count teams.
- * 5. Return that team id. Assignment is permanent — this is only ever
- *    called once per registration, at approval time.
+ * 5. Return that team id.
  */
 export async function assignBalancedTeam(): Promise<string | null> {
   const supabase = createServiceClient();
 
-  const { data: teams, error: teamsError } = await supabase
+  const { data: rawTeams, error: teamsError } = await supabase
     .from("teams")
     .select("id, name")
     .eq("active", true);
 
-  if (teamsError || !teams || teams.length === 0) return null;
+  if (teamsError || !rawTeams || rawTeams.length === 0) return null;
+
+  // Deduplicate teams by name
+  const teamsMap = new Map<string, any>();
+  for (const t of rawTeams) {
+    if (!teamsMap.has(t.name)) {
+      teamsMap.set(t.name, t);
+    }
+  }
+  const teams = Array.from(teamsMap.values());
 
   const { data: counts, error: countsError } = await supabase
     .from("registrations")

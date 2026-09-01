@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import {
   Users,
   CheckCircle2,
@@ -26,7 +25,6 @@ import { useRouter } from "next/navigation";
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [activeTab, setActiveTab] = useState<"overview" | "payments" | "registrations" | "teams" | "executives" | "settings">("overview");
   const [loading, setLoading] = useState(true);
@@ -60,46 +58,38 @@ export default function AdminDashboard() {
     setLoading(true);
     setDbError(false);
     try {
-      // 1. Fetch Registrations
-      const { data: regData, error: regErr } = await supabase
-        .from("registrations")
-        .select("*, teams(name, colour, hex)")
-        .order("created_at", { ascending: false });
-
-      if (regErr) {
-        if (regErr.code === "PGRST205" || regErr.message?.includes("schema cache")) {
-          setDbError(true);
-        }
-      } else {
-        setRegistrations(regData ?? []);
+      const res = await fetch("/api/admin/data");
+      if (res.status === 401) {
+        router.push("/admin/login");
+        return;
       }
+      const data = await res.json();
+      if (data.db_error) {
+        setDbError(true);
+        return;
+      }
+      setRegistrations(data.registrations ?? []);
+      setPayments(data.payments ?? []);
 
-      // 2. Fetch Payments
-      const { data: payData } = await supabase
-        .from("payments")
-        .select("*, registrations(full_name, email, phone, department, level)")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
-      setPayments(payData ?? []);
+      // Deduplicate teams by name
+      const rawTeams = data.teams ?? [];
+      const teamsMap = new Map<string, any>();
+      for (const t of rawTeams) {
+        if (!teamsMap.has(t.name)) {
+          teamsMap.set(t.name, t);
+        }
+      }
+      setTeams(Array.from(teamsMap.values()));
 
-      // 3. Fetch Teams
-      const { data: teamData } = await supabase.from("teams").select("*").order("order");
-      setTeams(teamData ?? []);
-
-      // 4. Fetch Executives
-      const { data: execData } = await supabase.from("executives").select("*").order("display_order");
-      setExecutives(execData ?? []);
-
-      // 5. Fetch Settings
-      const { data: setData } = await supabase.from("event_settings").select("*").single();
-      if (setData) {
-        setSettings(setData);
+      setExecutives(data.executives ?? []);
+      if (data.settings) {
+        setSettings(data.settings);
         setSettingsForm({
-          contribution_amount: setData.contribution_amount,
-          bank_name: setData.bank_name,
-          account_name: setData.account_name,
-          account_number: setData.account_number,
-          registration_open: setData.registration_open
+          contribution_amount: data.settings.contribution_amount,
+          bank_name: data.settings.bank_name,
+          account_name: data.settings.account_name,
+          account_number: data.settings.account_number,
+          registration_open: data.settings.registration_open
         });
       }
     } catch (e) {
@@ -132,7 +122,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Approval failed");
 
-      notify(`Approved successfully! Team assigned: ${data.team || "Assigned"}. Email dispatched: ${data.email_sent ? "Yes" : "Pending"}`);
+      notify(`Approved! Team assigned: ${data.team || "Assigned"}. Email sent: ${data.email_sent ? "Yes" : "Pending"}`);
       loadData();
     } catch (err: any) {
       notify(err?.message || "Could not approve. Try again.", "error");
@@ -423,14 +413,16 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* TEAM BALANCING BREAKDOWN */}
+            {/* DEDUPLICATED TEAM BALANCING BREAKDOWN */}
             <div className="bg-paper-soft border border-border p-6 rounded-md shadow-sm">
               <h3 className="font-serif font-semibold text-xl text-jet mb-4">Picnic Team Distribution</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 {teams.map((t) => {
-                  const teamMembers = registrations.filter((r) => r.status === "approved" && r.team_id === t.id).length;
+                  const teamMembers = registrations.filter(
+                    (r) => r.status === "approved" && (r.team_id === t.id || r.teams?.name === t.name)
+                  ).length;
                   return (
-                    <div key={t.id} className="bg-paper border border-border p-4 rounded-sm">
+                    <div key={t.id || t.name} className="bg-paper border border-border p-4 rounded-sm">
                       <div className="flex items-center gap-2 mb-2">
                         <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: t.hex }} />
                         <span className="font-semibold text-[15px]">{t.name}</span>
@@ -526,7 +518,7 @@ export default function AdminDashboard() {
                           <div><span className="text-gray-muted font-normal">Email:</span> {reg?.email}</div>
                           <div><span className="text-gray-muted font-normal">Phone:</span> {reg?.phone}</div>
                           {reg?.department && <div><span className="text-gray-muted font-normal">Dept / Level:</span> {reg.department} {reg.level ? `(${reg.level})` : ""}</div>}
-                          <div><span className="text-gray-muted font-normal">Transfer Method:</span> {p.bank_used || "Direct Bank Transfer"}</div>
+                          <div><span className="text-gray-muted font-normal font-semibold">Transfer Claim:</span> {p.bank_used || "Direct Bank Transfer"}</div>
                         </div>
                       </div>
 
@@ -561,7 +553,6 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             {/* SEARCH & FILTER CONTROLS */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-paper-soft p-4 rounded-md border border-border">
-              {/* Search Bar */}
               <div className="relative w-full sm:w-80">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-muted" />
                 <input
@@ -573,7 +564,6 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              {/* Filter Tabs */}
               <div className="flex items-center gap-1 text-[12px] uppercase tracking-wider font-semibold">
                 {(["all", "pending", "approved", "rejected"] as const).map((st) => (
                   <button
@@ -677,7 +667,7 @@ export default function AdminDashboard() {
             <div className="md:col-span-7 space-y-4">
               <h2 className="font-serif font-semibold text-2xl mb-4">Picnic Teams Manager</h2>
               {teams.map((t) => (
-                <div key={t.id} className="bg-paper-soft border border-border p-4 rounded-md flex items-center justify-between">
+                <div key={t.id || t.name} className="bg-paper-soft border border-border p-4 rounded-md flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="w-4 h-4 rounded-full border border-black/10" style={{ backgroundColor: t.hex }} />
                     <div>
@@ -802,7 +792,7 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between border-b border-border pb-4">
                 <div>
                   <span className="font-semibold text-[15px]">Registration Status</span>
-                  <p className="text-[12px] text-gray-muted">Allow students to sign up online</p>
+                  <p className="text-[12px] text-gray-muted font-normal">Allow students to sign up online</p>
                 </div>
                 <button
                   type="button"
