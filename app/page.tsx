@@ -43,13 +43,20 @@ export default async function Home() {
     settings = s;
     const { data: t } = await supabase.from("teams").select("id,name,colour,hex").eq("active", true).order("order");
     teams = t;
-    const { count: c } = await supabase
-      .from("registrations")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "approved");
-    joinedCount = c ?? 0;
   } catch (e) {
     // Gracefully handle uninitialized database
+  }
+
+  // Fetch approved count via service-role API to bypass RLS
+  try {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    const res = await fetch(`${siteUrl}/api/public/stats`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      joinedCount = data.totalApproved ?? 0;
+    }
+  } catch (e) {
+    // fallback to 0
   }
 
   const startDate = settings?.start_date ? new Date(settings.start_date).toISOString() : "2026-09-21T00:00:00";

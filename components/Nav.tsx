@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X, ShieldCheck } from "lucide-react";
+import { Menu, X } from "lucide-react";
 
 export default function Nav() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -20,16 +20,13 @@ export default function Nav() {
           </span>
         </Link>
 
-        {/* Desktop Navigation Links */}
+        {/* Desktop Navigation Links (Admin link removed, accessible via direct URL /admin) */}
         <nav className="hidden md:flex items-center gap-7 text-[13px] uppercase tracking-wider font-semibold text-jet">
           <Link href="/schedule" className="hover:text-accent transition-colors">The Week</Link>
           <Link href="/#picnic" className="hover:text-accent transition-colors">Picnic</Link>
           <Link href="/teams" className="hover:text-accent transition-colors">Teams</Link>
           <Link href="/executives" className="hover:text-accent transition-colors">Executives</Link>
           <Link href="/about" className="hover:text-accent transition-colors">About</Link>
-          <Link href="/admin" className="text-gray-muted hover:text-jet transition-colors flex items-center gap-1">
-            <ShieldCheck size={14} /> Admin
-          </Link>
         </nav>
 
         {/* Action Buttons & Mobile Hamburger */}
@@ -70,9 +67,6 @@ export default function Nav() {
             </Link>
             <Link href="/about" onClick={closeMobile} className="py-2 border-b border-border/50 hover:text-accent">
               About NFCS
-            </Link>
-            <Link href="/admin" onClick={closeMobile} className="py-2 text-accent flex items-center gap-2">
-              <ShieldCheck size={16} /> Admin Portal
             </Link>
           </nav>
           <div className="pt-2">
