@@ -18,7 +18,8 @@ import {
   Plus,
   LogOut,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Trash2
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -148,6 +149,29 @@ export default function AdminDashboard() {
       notify("Could not reject registration.", "error");
     } finally {
       setActionLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  // Delete User Registration
+  async function handleDelete(regId: string, fullName: string) {
+    if (!confirm(`Are you sure you want to delete ${fullName}? This will permanently remove their registration and payment records.`)) {
+      return;
+    }
+    setActionLoading((prev) => ({ ...prev, [regId]: true }));
+    try {
+      const res = await fetch("/api/admin/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ registration_id: regId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      notify(`User ${fullName} deleted successfully.`);
+      loadData();
+    } catch (err: any) {
+      notify(err?.message || "Could not delete user.", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [regId]: false }));
     }
   }
 
@@ -523,7 +547,7 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* 1-CLICK ACTION BUTTONS */}
-                      <div className="flex items-center gap-3 pt-2">
+                      <div className="flex items-center gap-2 pt-2">
                         <button
                           onClick={() => handleApprove(p.id)}
                           disabled={isBusy}
@@ -535,10 +559,21 @@ export default function AdminDashboard() {
                         <button
                           onClick={() => handleReject(p.id)}
                           disabled={isBusy}
-                          className="bg-paper border border-team-red/40 text-team-red hover:bg-team-red hover:text-white px-4 py-3 rounded text-[12px] uppercase tracking-wider font-bold transition-colors disabled:opacity-60"
+                          title="Reject Transfer"
+                          className="bg-paper border border-amber-600/40 text-amber-700 hover:bg-amber-600 hover:text-white px-3 py-3 rounded text-[12px] uppercase tracking-wider font-bold transition-colors disabled:opacity-60"
                         >
                           <X size={16} />
                         </button>
+                        {reg?.id && (
+                          <button
+                            onClick={() => handleDelete(reg.id, reg.full_name)}
+                            disabled={actionLoading[reg.id]}
+                            title="Delete User Registration"
+                            className="bg-paper border border-team-red/40 text-team-red hover:bg-team-red hover:text-white px-3 py-3 rounded text-[12px] uppercase tracking-wider font-bold transition-colors disabled:opacity-60"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -623,33 +658,43 @@ export default function AdminDashboard() {
                             )}
                           </td>
                           <td className="py-3.5 px-4 text-right">
-                            {r.status === "pending" && (
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => handleApprove(undefined, r.id)}
-                                  disabled={actionLoading[r.id]}
-                                  className="bg-accent text-white text-[11px] uppercase font-bold px-3 py-1.5 rounded hover:bg-emerald-700 transition-colors shadow-sm"
+                            <div className="flex items-center justify-end gap-2">
+                              {r.status === "pending" && (
+                                <>
+                                  <button
+                                    onClick={() => handleApprove(undefined, r.id)}
+                                    disabled={actionLoading[r.id]}
+                                    className="bg-accent text-white text-[11px] uppercase font-bold px-3 py-1.5 rounded hover:bg-emerald-700 transition-colors shadow-sm"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleReject(undefined, r.id)}
+                                    disabled={actionLoading[r.id]}
+                                    className="border border-amber-600/40 text-amber-700 text-[11px] uppercase font-bold px-2 py-1.5 rounded hover:bg-amber-600 hover:text-white transition-colors"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                              {r.status === "approved" && (
+                                <Link
+                                  href={`/ticket/${r.id}`}
+                                  target="_blank"
+                                  className="text-[12px] text-accent hover:underline font-semibold mr-1"
                                 >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => handleReject(undefined, r.id)}
-                                  disabled={actionLoading[r.id]}
-                                  className="border border-team-red/40 text-team-red text-[11px] uppercase font-bold px-2 py-1.5 rounded hover:bg-team-red hover:text-white transition-colors"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            )}
-                            {r.status === "approved" && (
-                              <Link
-                                href={`/ticket/${r.id}`}
-                                target="_blank"
-                                className="text-[12px] text-accent hover:underline font-semibold"
+                                  Ticket &rarr;
+                                </Link>
+                              )}
+                              <button
+                                onClick={() => handleDelete(r.id, r.full_name)}
+                                disabled={actionLoading[r.id]}
+                                title="Delete Member"
+                                className="border border-team-red/30 text-team-red hover:bg-team-red hover:text-white p-1.5 rounded transition-colors"
                               >
-                                View Ticket &rarr;
-                              </Link>
-                            )}
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
